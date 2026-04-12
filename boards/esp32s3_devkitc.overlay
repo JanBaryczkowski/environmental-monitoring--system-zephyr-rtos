@@ -1,0 +1,48 @@
+&pinctrl {
+    spim2_default: spim2_default {
+        group1 {
+            pinmux = <SPIM2_MISO_GPIO13>,
+                     <SPIM2_SCLK_GPIO12>;
+        };
+        group2 {
+            pinmux = <SPIM2_MOSI_GPIO11>;
+            output-low;
+        };
+    };
+};
+
+&spi2 {
+    cs-gpios = <&gpio0 10 GPIO_ACTIVE_LOW>;
+
+    led_matrix: max7219@0 {
+        compatible = "maxim,max7219";
+        reg = <0>;
+        spi-max-frequency = <1000000>;
+        intensity = <1>;
+        num-cascading = <4>;
+        scan-limit = <7>;
+    };
+};
+
+/ {
+    dht_sensor: dht11 {
+        compatible = "aosong,dht";
+        status = "okay";
+        dio-gpios = <&gpio0 6 GPIO_ACTIVE_LOW>;
+    };
+
+    btn: buttons {
+        compatible = "gpio-keys";
+        button_1: button_1 {
+            gpios = <&gpio0 5 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+            label = "User Button 1";
+            zephyr,code = <0>;
+        };
+    };
+
+    aliases {
+        led-matrix = &led_matrix;
+        dht-sensor = &dht_sensor;
+        btn = &button_1;
+    };
+};
