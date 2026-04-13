@@ -12,6 +12,9 @@ static const struct gpio_dt_spec button	= GPIO_DT_SPEC_GET(DT_ALIAS(btn),gpios);
 
 static atomic_t sys_enable = ATOMIC_INIT(0);
 
+#define DEBOUNCE_MS 200
+static int64_t last_press_time = 0;
+
 #define DHT_THREAD_STACK_SIZE 4096
 #define MATRIX_THREAD_STACK_SIZE 4096
 
@@ -27,9 +30,9 @@ struct dht_data{
 
 // define message queue
 K_MSGQ_DEFINE(dht_msgq,
-	     sizeof(struct dht_data),
-	     10,
-	     4);			// change from 4 to 8 - test
+	    sizeof(struct dht_data),
+	    10,
+	    4);			// change from 4 to 8 - test
 
 // declare thread data structs
 static struct k_thread dht_thread;
@@ -44,9 +47,9 @@ static const uint8_t font3x5[10][5] = {		// 10 numbers and 5 raws
 	[4] = {0b101, 0b101, 0b111, 0b001, 0b001},
 	[5] = {0b111, 0b100, 0b111, 0b001, 0b111},
 	[6] = {0b111, 0b100, 0b111, 0b101, 0b111},
-    	[7] = {0b111, 0b001, 0b001, 0b001, 0b001},
-    	[8] = {0b111, 0b101, 0b111, 0b101, 0b111},
-    	[9] = {0b111, 0b101, 0b111, 0b001, 0b111}
+    [7] = {0b111, 0b001, 0b001, 0b001, 0b001},
+    [8] = {0b111, 0b101, 0b111, 0b101, 0b111},
+    [9] = {0b111, 0b101, 0b111, 0b001, 0b111}
 };
 
 static const uint8_t font_degree = 0b11;
@@ -54,32 +57,38 @@ static const uint8_t font_celsius[5] = {0b111, 0b100, 0b100, 0b100, 0b111};
 #define font_dot 0b00000001
 static const uint8_t font_percent[5] = {0b100, 0b001, 0b010, 0b100, 0b001};
 
-static uint8_t matrix_buffer[32];	      // 4 segments x 8raws = 32 digits
+static uint8_t matrix_buffer[32];	     // 4 segments x 8raws = 32 digits
 
 struct gpio_callback btn_data;
 
 // callback function for interrupt
 void btn_pressed(const struct device *dev, struct gpio_callback *cb, uint32_t pins){
-    atomic_xor(&sys_enable, 1);
 
-    if (atomic_get(&sys_enable)) {
-        display_blanking_off(matrix_dev);
-	printk("It is on babe\n");
-    } else {
-        k_msgq_purge(&dht_msgq);
+	int64_t now = k_uptime_get();
+
+	if (now - last_press_time < DEBOUNCE_MS){
+		return;
+	}
+	last_press_time = now;
+
+	atomic_xor(&sys_enable, 1);
+	if (atomic_get(&sys_enable)) {
+		display_blanking_off(matrix_dev);
+		printk("It is on babe\n");
+	} else {
+    	k_msgq_purge(&dht_msgq);
 
         memset(matrix_buffer, 0, sizeof(matrix_buffer));
 
-        const struct display_buffer_descriptor desc = {
-            .buf_size = 32,
-            .width    = 8,
-            .height   = 32,
-            .pitch    = 8,
-        };
-
-        display_write(matrix_dev, 0, 0, &desc, matrix_buffer);
+		const struct display_buffer_descriptor desc = {
+			.buf_size = 32,
+            .width = 8,
+            .height = 32,
+            .pitch = 8,
+		};
+	display_write(matrix_dev, 0, 0, &desc, matrix_buffer);
 	printk("Nah not again :(\n");
-    }
+	}
 }
 
 
@@ -133,7 +142,7 @@ void matrix_thread_start(void *arg_1, void *arg_2, void *arg_3){
 				data_recived.temp  / 10, data_recived.temp  % 10,
 				data_recived.humid / 10, data_recived.humid % 10);
 
-               		memset(matrix_buffer, 0 , sizeof(matrix_buffer)); // buffer cleaning
+            memset(matrix_buffer, 0 , sizeof(matrix_buffer)); // buffer cleaning
 
 			// tbh tem dec and humid dec is useless if you use dht11 and ofc i use it :)
 			int temp_int = data_recived.temp / 10;
@@ -160,17 +169,17 @@ void matrix_thread_start(void *arg_1, void *arg_2, void *arg_3){
 				matrix_buffer[8 + i] = (font3x5[humid_tens][i] << 5) | (font3x5[humid_units][i] << 1);
 			}
 
-			matrix_buffer[4] |= font_dot;
+			matrix_buffer[12] |= font_dot;
 
 			for (int i = 0; i < 5 ; i++) {
 				matrix_buffer[i] = (font3x5[humid_dec][i] << 5)  | (font_percent[i]);
 			}
 
-		        const struct display_buffer_descriptor desc = {
-			        .buf_size = 32,
-        			.width    = 8,
-        			.height   = 32,
-      				.pitch    = 8,
+		       const struct display_buffer_descriptor desc = {
+			       	.buf_size = 32,
+        			.width = 8,
+        			.height = 32,
+      				.pitch = 8,
         		};
 
 			display_write(matrix_dev, 0, 0, &desc, matrix_buffer);
@@ -214,22 +223,22 @@ int main(void){
 
 	// start threads
 	k_thread_create(&dht_thread,		//thread struct
-  		       dht_stack,		//stack
-		       K_THREAD_STACK_SIZEOF(dht_stack),
-		       dht_thread_start,	//entry point
-		       NULL, NULL, NULL,	//args
-	    	       5, 			//priority
-	 	       0, 			// option
-		       K_NO_WAIT);		// start delay
+  		      dht_stack,		//stack
+		      K_THREAD_STACK_SIZEOF(dht_stack),
+		      dht_thread_start,	//entry point
+		      NULL, NULL, NULL,	//args
+	   	      5, 			//priority
+		      0, 			// option
+		      K_NO_WAIT);		// start delay
 
 	k_thread_create(&matrix_thread,
- 		       matrix_stack,
-		       K_THREAD_STACK_SIZEOF(matrix_stack),
-	      	       matrix_thread_start,
-		       NULL, NULL, NULL,
-	   	       5,
-	 	       0,
-		       K_NO_WAIT);
+ 		      matrix_stack,
+		      K_THREAD_STACK_SIZEOF(matrix_stack),
+	     	  matrix_thread_start,
+		      NULL, NULL, NULL,
+	  	      5,
+		      0,
+		      K_NO_WAIT);
 	while(1){
 		k_msleep(1000);
 	}
