@@ -24,6 +24,10 @@
     };
 };
 
+&wifi {
+    status = "okay";    
+};
+
 / {
     dht_sensor: dht11 {
         compatible = "aosong,dht";
@@ -40,9 +44,23 @@
         };
     };
 
+    leds {
+        compatible = "gpio-leds";
+        
+        led0: led0 {
+            gpios = <&gpio0 3 GPIO_ACTIVE_HIGH>;
+        };
+
+        led1: led1 {
+            gpios = <&gpio0 4 GPIO_ACTIVE_HIGH>;
+        };
+    };
+
     aliases {
         led-matrix = &led_matrix;
         dht-sensor = &dht_sensor;
         btn = &button_1;
+        led-heat = &led0;
+        led-cold = &led1;
     };
 };
